@@ -1,0 +1,561 @@
+[
+  {
+    "id": "new-year-01",
+    "name": "福气唐装",
+    "category": "过年",
+    "imageUrl": "/templates/new-year-01.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 296,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "new-year-02",
+    "name": "灯笼红裙",
+    "category": "过年",
+    "imageUrl": "/templates/new-year-02.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 296,
+      "y": 152,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "new-year-05",
+    "name": "青云唐装",
+    "category": "过年",
+    "imageUrl": "/templates/new-year-05.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 311,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "new-year-06",
+    "name": "梅花灯笼裙",
+    "category": "过年",
+    "imageUrl": "/templates/new-year-06.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 285,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "new-year-07",
+    "name": "福字斗篷",
+    "category": "过年",
+    "imageUrl": "/templates/new-year-07.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 307,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "new-year-08",
+    "name": "红包拜年装",
+    "category": "过年",
+    "imageUrl": "/templates/new-year-08.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 270,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "new-year-09",
+    "name": "如意拜年装",
+    "category": "过年",
+    "imageUrl": "/templates/new-year-09.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 286,
+      "y": 160,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "school-01",
+    "name": "学院蝴蝶结",
+    "category": "校服",
+    "imageUrl": "/templates/school-01.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 331,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "school-02",
+    "name": "卡其小绅士",
+    "category": "校服",
+    "imageUrl": "/templates/school-02.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 282,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "school-03",
+    "name": "灰裙校服",
+    "category": "校服",
+    "imageUrl": "/templates/school-03.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 261,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "school-04",
+    "name": "海军蓝西装",
+    "category": "校服",
+    "imageUrl": "/templates/school-04.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 331,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "school-05",
+    "name": "酒红针织衫",
+    "category": "校服",
+    "imageUrl": "/templates/school-05.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 278,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "school-06",
+    "name": "披肩学院裙",
+    "category": "校服",
+    "imageUrl": "/templates/school-06.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 263,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "school-07",
+    "name": "蓝衫格纹裙",
+    "category": "校服",
+    "imageUrl": "/templates/school-07.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 330,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "school-08",
+    "name": "棕衫学院装",
+    "category": "校服",
+    "imageUrl": "/templates/school-08.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 277,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "school-09",
+    "name": "绿背心校服",
+    "category": "校服",
+    "imageUrl": "/templates/school-09.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 260,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "fairy-tale-01",
+    "name": "粉红小公主",
+    "category": "童话",
+    "imageUrl": "/templates/fairy-tale-01.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 318,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "fairy-tale-02",
+    "name": "蓝披风王子",
+    "category": "童话",
+    "imageUrl": "/templates/fairy-tale-02.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 288,
+      "y": 170,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "fairy-tale-03",
+    "name": "森林公主",
+    "category": "童话",
+    "imageUrl": "/templates/fairy-tale-03.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 283,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "fairy-tale-04",
+    "name": "银甲骑士",
+    "category": "童话",
+    "imageUrl": "/templates/fairy-tale-04.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 317,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "fairy-tale-05",
+    "name": "黑礼服王子",
+    "category": "童话",
+    "imageUrl": "/templates/fairy-tale-05.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 291,
+      "y": 150,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "fairy-tale-06",
+    "name": "紫星公主",
+    "category": "童话",
+    "imageUrl": "/templates/fairy-tale-06.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 279,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "fairy-tale-07",
+    "name": "花园公主",
+    "category": "童话",
+    "imageUrl": "/templates/fairy-tale-07.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 319,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "fairy-tale-08",
+    "name": "海军礼服",
+    "category": "童话",
+    "imageUrl": "/templates/fairy-tale-08.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 271,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "fairy-tale-09",
+    "name": "彩虹公主",
+    "category": "童话",
+    "imageUrl": "/templates/fairy-tale-09.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 281,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "ancient-01",
+    "name": "青玉汉服",
+    "category": "古风",
+    "imageUrl": "/templates/ancient-01.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 322,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "ancient-02",
+    "name": "锦绣公子",
+    "category": "古风",
+    "imageUrl": "/templates/ancient-02.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 284,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "ancient-03",
+    "name": "桃粉汉服",
+    "category": "古风",
+    "imageUrl": "/templates/ancient-03.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 283,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "ancient-04",
+    "name": "花间襦裙",
+    "category": "古风",
+    "imageUrl": "/templates/ancient-04.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 327,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "ancient-05",
+    "name": "山河侠客",
+    "category": "古风",
+    "imageUrl": "/templates/ancient-05.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 308,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "ancient-06",
+    "name": "梅花灯笼袍",
+    "category": "古风",
+    "imageUrl": "/templates/ancient-06.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 278,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "ancient-07",
+    "name": "杏黄汉服",
+    "category": "古风",
+    "imageUrl": "/templates/ancient-07.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 318,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "ancient-08",
+    "name": "竹影披风",
+    "category": "古风",
+    "imageUrl": "/templates/ancient-08.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 300,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "ancient-09",
+    "name": "莲花仙裙",
+    "category": "古风",
+    "imageUrl": "/templates/ancient-09.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 273,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "sports-01",
+    "name": "篮球少年",
+    "category": "运动",
+    "imageUrl": "/templates/sports-01.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 322,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "sports-02",
+    "name": "羽毛球女孩",
+    "category": "运动",
+    "imageUrl": "/templates/sports-02.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 311,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "sports-03",
+    "name": "足球小将",
+    "category": "运动",
+    "imageUrl": "/templates/sports-03.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 309,
+      "y": 161,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "sports-04",
+    "name": "跳绳运动装",
+    "category": "运动",
+    "imageUrl": "/templates/sports-04.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 327,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "sports-05",
+    "name": "轮滑女孩",
+    "category": "运动",
+    "imageUrl": "/templates/sports-05.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 284,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "sports-06",
+    "name": "网球女孩",
+    "category": "运动",
+    "imageUrl": "/templates/sports-06.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 303,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "sports-07",
+    "name": "棒球夹克",
+    "category": "运动",
+    "imageUrl": "/templates/sports-07.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 318,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "sports-08",
+    "name": "活力篮球装",
+    "category": "运动",
+    "imageUrl": "/templates/sports-08.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 256,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  },
+  {
+    "id": "sports-09",
+    "name": "滑板女孩",
+    "category": "运动",
+    "imageUrl": "/templates/sports-09.png",
+    "tone": "#f1ede4",
+    "head": {
+      "x": 309,
+      "y": 146,
+      "w": 215,
+      "h": 225
+    }
+  }
+]
