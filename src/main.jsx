@@ -9,6 +9,7 @@ import './styles.css'
 
 const OUTPUT_W = 600
 const OUTPUT_H = 800
+const MODEL_BASE = import.meta.env.BASE_URL
 let faceDetectorPromise
 let headSegmenterPromise
 let visionFilesetPromise
@@ -16,7 +17,7 @@ let visionFilesetPromise
 function getVisionFileset() {
   if (!visionFilesetPromise) {
     // The JS package and WASM runtime must be the exact same version.
-    visionFilesetPromise = FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm')
+    visionFilesetPromise = FilesetResolver.forVisionTasks(`${MODEL_BASE}mediapipe/wasm`)
   }
   return visionFilesetPromise
 }
@@ -72,7 +73,7 @@ async function getFaceDetector() {
   if (!faceDetectorPromise) {
     faceDetectorPromise = getVisionFileset()
       .then(vision => FaceDetector.createFromOptions(vision, {
-        baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/latest/blaze_face_short_range.tflite' },
+        baseOptions: { modelAssetPath: `${MODEL_BASE}models/face_detector.tflite` },
         runningMode: 'IMAGE', minDetectionConfidence: 0.45
       }))
   }
@@ -83,7 +84,7 @@ async function getHeadSegmenter() {
   if (!headSegmenterPromise) {
     headSegmenterPromise = getVisionFileset()
       .then(vision => ImageSegmenter.createFromOptions(vision, {
-        baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite' },
+        baseOptions: { modelAssetPath: `${MODEL_BASE}models/selfie_multiclass.tflite` },
         runningMode: 'IMAGE', outputCategoryMask: true, outputConfidenceMasks: false
       }))
   }
@@ -107,14 +108,14 @@ function safeName(value) {
   return (value || '未命名').replace(/[\\/:*?"<>|]/g, '_').trim() || '未命名'
 }
 
-async function createHeadCutout(original, face) {
+async function createHeadCutout(original, face, precise = false) {
   const fw = face.w, fh = face.h
   const sx = Math.max(0, face.x - fw * 0.72)
   const sy = Math.max(0, face.y - fh * 0.78)
   const sw = Math.min(original.naturalWidth - sx, fw * 2.44)
   // Stop shortly below the chin. Shoulders and torso never enter the model.
   const sh = Math.min(original.naturalHeight - sy, fh * 1.95)
-  const scale = Math.min(1, 512 / Math.max(sw, sh))
+  const scale = Math.min(1, (precise ? 512 : 384) / Math.max(sw, sh))
   const width = Math.max(1, Math.round(sw * scale))
   const height = Math.max(1, Math.round(sh * scale))
   const canvas = document.createElement('canvas')
@@ -141,27 +142,29 @@ async function createHeadCutout(original, face) {
   semanticCtx.putImageData(semanticPixels, 0, 0)
   categoryMask.close()
 
-  const inputBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
-  const backgroundRemovedBlob = await removeBackground(inputBlob, {
-    model: 'isnet_fp16',
-    proxyToWorker: true,
-    rescale: true,
-    output: { format: 'image/png', quality: 1 }
-  })
-  const backgroundRemovedUrl = URL.createObjectURL(backgroundRemovedBlob)
-  const backgroundRemoved = await loadImage(backgroundRemovedUrl)
   const outputCanvas = document.createElement('canvas')
-  outputCanvas.width = backgroundRemoved.naturalWidth
-  outputCanvas.height = backgroundRemoved.naturalHeight
+  outputCanvas.width = width
+  outputCanvas.height = height
   const outputCtx = outputCanvas.getContext('2d')
-  outputCtx.drawImage(backgroundRemoved, 0, 0)
+  if (precise) {
+    const inputBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
+    const backgroundRemovedBlob = await removeBackground(inputBlob, {
+      model: 'isnet_fp16', proxyToWorker: true, rescale: true,
+      output: { format: 'image/png', quality: 1 }
+    })
+    const backgroundRemovedUrl = URL.createObjectURL(backgroundRemovedBlob)
+    const backgroundRemoved = await loadImage(backgroundRemovedUrl)
+    outputCtx.drawImage(backgroundRemoved, 0, 0, width, height)
+    URL.revokeObjectURL(backgroundRemovedUrl)
+  } else {
+    outputCtx.drawImage(canvas, 0, 0)
+  }
   outputCtx.globalCompositeOperation = 'destination-in'
   outputCtx.imageSmoothingEnabled = true
-  outputCtx.filter = 'blur(1px)'
+  outputCtx.filter = 'blur(0.8px)'
   outputCtx.drawImage(semanticMask, 0, 0, outputCanvas.width, outputCanvas.height)
   outputCtx.filter = 'none'
   outputCtx.globalCompositeOperation = 'source-over'
-  URL.revokeObjectURL(backgroundRemovedUrl)
   const blob = await new Promise(resolve => outputCanvas.toBlob(resolve, 'image/png'))
   return {
     blob,
@@ -173,6 +176,17 @@ async function createHeadCutout(original, face) {
       h: face.h * scale * outputCanvas.height / height
     }
   }
+}
+
+function createDetectionCanvas(image) {
+  const maxSide = Math.max(image.naturalWidth, image.naturalHeight)
+  if (maxSide <= 1280) return { source: image, scale: 1 }
+  const scale = 1280 / maxSide
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.round(image.naturalWidth * scale)
+  canvas.height = Math.round(image.naturalHeight * scale)
+  canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height)
+  return { source: canvas, scale }
 }
 
 function getPlacement(student, template) {
@@ -214,14 +228,20 @@ function createErasedCutout(student) {
   return canvas
 }
 
-async function prepareStudent(file, index) {
+async function prepareStudent(file, index, precise = false) {
+  const startedAt = performance.now()
   const originalUrl = URL.createObjectURL(file)
   const original = await loadImage(originalUrl)
   let face = null
   try {
     const detector = await getFaceDetector()
-    const result = detector.detect(original)
-    face = result.detections?.[0]?.boundingBox || null
+    const detection = createDetectionCanvas(original)
+    const result = detector.detect(detection.source)
+    const box = result.detections?.[0]?.boundingBox || null
+    face = box && {
+      originX: box.originX / detection.scale, originY: box.originY / detection.scale,
+      width: box.width / detection.scale, height: box.height / detection.scale
+    }
   } catch (error) {
     console.warn('Face detection unavailable, using center crop.', error)
   }
@@ -235,7 +255,7 @@ async function prepareStudent(file, index) {
   let processedCrop
   let processedFace
   try {
-    const result = await createHeadCutout(original, { x: fx, y: fy, w: fw, h: fh })
+    const result = await createHeadCutout(original, { x: fx, y: fy, w: fw, h: fh }, precise)
     cutoutUrl = URL.createObjectURL(result.blob)
     processedCrop = result.crop
     processedFace = result.face
@@ -261,8 +281,20 @@ async function prepareStudent(file, index) {
     id: crypto.randomUUID(), name: file.name.replace(/\.[^.]+$/, '') || `小朋友${index + 1}`,
     file, originalUrl, cutoutUrl, image: cutout, crop,
     face: processedFace, templateId: templates[0].id,
-    scale: 1, offsetX: 0, offsetY: 0, erasures: [], status: 'ready'
+    scale: 1, offsetX: 0, offsetY: 0, erasures: [], status: 'ready',
+    cutoutMode: precise ? 'precise' : 'fast', durationMs: Math.round(performance.now() - startedAt)
   }
+}
+
+async function runWithConcurrency(items, limit, worker) {
+  let cursor = 0
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor++
+      await worker(items[index], index)
+    }
+  })
+  await Promise.all(runners)
 }
 
 function PreviewCanvas({ student, template, className = '', eraseMode = false, brushSize = 36, onErase }) {
@@ -317,6 +349,7 @@ function App() {
   const [errorMessage, setErrorMessage] = useState('')
   const [dragging, setDragging] = useState(false)
   const [eraseMode, setEraseMode] = useState(false)
+  const [refiningId, setRefiningId] = useState(null)
   const [brushSize, setBrushSize] = useState(38)
   const fileInput = useRef(null)
   const templateInput = useRef(null)
@@ -330,22 +363,53 @@ function App() {
   useEffect(() => {
     loadSavedTemplates().then(setCustomTemplates).catch(error => console.warn('Unable to load saved templates.', error))
   }, [])
+  useEffect(() => {
+    const warmUp = () => Promise.allSettled([getFaceDetector(), getHeadSegmenter()])
+    const idleId = 'requestIdleCallback' in window
+      ? window.requestIdleCallback(warmUp, { timeout: 1500 })
+      : window.setTimeout(warmUp, 300)
+    return () => 'cancelIdleCallback' in window ? window.cancelIdleCallback(idleId) : clearTimeout(idleId)
+  }, [])
 
   const addFiles = useCallback(async fileList => {
     const files = [...fileList].filter(file => file.type.startsWith('image/'))
     if (!files.length) return
     setProcessing({ active: true, done: 0, total: files.length, label: '正在识别人像并抠图' })
-    const added = []
+    const added = new Array(files.length)
     const failed = []
-    for (let i = 0; i < files.length; i++) {
-      try { added.push(await prepareStudent(files[i], students.length + i)) } catch (error) { failed.push(files[i].name); console.error(error) }
-      setProcessing(p => ({ ...p, done: i + 1 }))
-    }
-    setStudents(current => [...current, ...added])
-    if (added[0]) setSelectedId(added[0].id)
+    let finished = 0
+    await runWithConcurrency(files, 2, async (file, i) => {
+      try { added[i] = await prepareStudent(file, students.length + i) } catch (error) { failed.push(file.name); console.error(error) }
+      finished += 1
+      setProcessing(p => ({ ...p, done: finished }))
+    })
+    const completed = added.filter(Boolean)
+    setStudents(current => [...current, ...completed])
+    if (completed[0]) setSelectedId(completed[0].id)
     setProcessing({ active: false, done: 0, total: 0, label: '' })
     if (failed.length) setErrorMessage(`${failed.length} 张照片未能完成头部分割，请检查网络后重新上传。`)
   }, [students.length])
+
+  const refineSelected = async () => {
+    if (!selected || refiningId) return
+    setRefiningId(selected.id)
+    setProcessing({ active: true, done: 0, total: 1, label: '正在精细抠图' })
+    try {
+      const refined = await prepareStudent(selected.file, 0, true)
+      URL.revokeObjectURL(refined.originalUrl)
+      URL.revokeObjectURL(selected.cutoutUrl)
+      setStudents(list => list.map(student => student.id === selected.id ? {
+        ...student, cutoutUrl: refined.cutoutUrl, image: refined.image, crop: refined.crop,
+        face: refined.face, cutoutMode: 'precise', durationMs: refined.durationMs, erasures: []
+      } : student))
+    } catch (error) {
+      console.error(error)
+      setErrorMessage('精细抠图失败，已保留当前快速抠图结果。')
+    } finally {
+      setRefiningId(null)
+      setProcessing({ active: false, done: 0, total: 0, label: '' })
+    }
+  }
 
   const updateSelected = patch => setStudents(list => list.map(s => s.id === selected?.id ? { ...s, ...patch } : s))
   const addSelectedErasure = point => setStudents(list => list.map(s => s.id === selected?.id
@@ -456,7 +520,7 @@ function App() {
         </div> : <>
           <div className="stage-toolbar">
             <div><span className="step">02</span><h2>调整效果</h2></div>
-            <div className="toolbar-actions"><button className={`secondary erase-toggle ${eraseMode ? 'active' : ''}`} title="消除残留背景" onClick={() => setEraseMode(value => !value)}><Eraser size={16}/>消除</button><button className="icon-btn" title="重置位置" onClick={() => updateSelected({scale: 1, offsetX: 0, offsetY: 0})}><RotateCcw size={17}/></button><button className="secondary" onClick={() => exportOne(selected)}><Download size={16}/>导出当前</button></div>
+            <div className="toolbar-actions"><button className="secondary refine-btn" title="复杂背景使用更精细但较慢的抠图" onClick={refineSelected} disabled={selected.cutoutMode === 'precise' || !!refiningId}><Sparkles size={16}/>{selected.cutoutMode === 'precise' ? '已精细处理' : '精细抠图'}</button><button className={`secondary erase-toggle ${eraseMode ? 'active' : ''}`} title="消除残留背景" onClick={() => setEraseMode(value => !value)}><Eraser size={16}/>消除</button><button className="icon-btn" title="重置位置" onClick={() => updateSelected({scale: 1, offsetX: 0, offsetY: 0})}><RotateCcw size={17}/></button><button className="secondary" onClick={() => exportOne(selected)}><Download size={16}/>导出当前</button></div>
           </div>
           <div className="preview-wrap"><div className="checker"><PreviewCanvas student={selected} template={selectedTemplate} className="main-preview" eraseMode={eraseMode} brushSize={brushSize} onErase={addSelectedErasure}/></div></div>
           {eraseMode && <div className="erase-toolbar">
@@ -465,6 +529,7 @@ function App() {
             <button title="撤销上一步" disabled={!selected.erasures?.length} onClick={() => updateSelected({erasures: selected.erasures.slice(0, -1)})}><Undo2 size={15}/>撤销</button>
             <button title="还原全部消除" disabled={!selected.erasures?.length} onClick={() => updateSelected({erasures: []})}><RotateCcw size={15}/>还原</button>
           </div>}
+          <div className="process-summary"><span className={selected.cutoutMode === 'precise' ? 'precise' : ''}>{selected.cutoutMode === 'precise' ? '精细模式' : '快速模式'}</span><b>{selected.durationMs ? `${(selected.durationMs / 1000).toFixed(1)} 秒` : ''}</b></div>
           <div className="student-editor">
             <label><span>文件名</span><input value={selected.name} onChange={e => updateSelected({name: e.target.value})}/></label>
             <label><span>头像大小</span><input type="range" min="0.75" max="1.35" step="0.01" value={selected.scale} onChange={e => updateSelected({scale: +e.target.value})}/><output>{Math.round(selected.scale * 100)}%</output></label>
@@ -503,7 +568,7 @@ function App() {
       </aside>
     </main>
 
-    {processing.active && <div className="modal-backdrop"><div className="progress-modal"><button className="modal-x" aria-label="关闭" disabled><X size={16}/></button><div className="spinner"><Sparkles size={22}/></div><h3>{processing.label}</h3><p>{processing.done} / {processing.total}</p><div className="progress-track"><i style={{width: `${processing.total ? processing.done / processing.total * 100 : 5}%`}}/></div><span>首次使用需要加载模型，请稍候</span></div></div>}
+    {processing.active && <div className="modal-backdrop"><div className="progress-modal"><button className="modal-x" aria-label="关闭" disabled><X size={16}/></button><div className="spinner"><Sparkles size={22}/></div><h3>{processing.label}</h3><p>{processing.done} / {processing.total}</p><div className="progress-track"><i style={{width: `${processing.total ? processing.done / processing.total * 100 : 5}%`}}/></div><span>{processing.label.includes('精细') ? '复杂照片会使用高质量模型，请稍候' : '快速模式通常可在 20 秒内完成'}</span></div></div>}
     {errorMessage && <div className="error-toast" role="alert"><AlertTriangle size={18}/><span>{errorMessage}</span><button aria-label="关闭提示" onClick={() => setErrorMessage('')}><X size={16}/></button></div>}
   </div>
 }
