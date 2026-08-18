@@ -11,6 +11,7 @@ const OUTPUT_W = 600
 const OUTPUT_H = 800
 const MODEL_BASE = import.meta.env.BASE_URL
 let faceDetectorPromise
+let fastSegmenterPromise
 let headSegmenterPromise
 let visionFilesetPromise
 
@@ -91,6 +92,17 @@ async function getHeadSegmenter() {
   return headSegmenterPromise
 }
 
+async function getFastSegmenter() {
+  if (!fastSegmenterPromise) {
+    fastSegmenterPromise = getVisionFileset()
+      .then(vision => ImageSegmenter.createFromOptions(vision, {
+        baseOptions: { modelAssetPath: `${MODEL_BASE}models/selfie_segmenter.tflite` },
+        runningMode: 'IMAGE', outputCategoryMask: true, outputConfidenceMasks: false
+      }))
+  }
+  return fastSegmenterPromise
+}
+
 function loadImage(src) {
   return new Promise((resolve, reject) => {
     const image = new Image()
@@ -98,6 +110,69 @@ function loadImage(src) {
     image.onerror = reject
     image.src = src
   })
+}
+
+function createSimpleBackgroundMask(canvas) {
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  const { width, height } = canvas
+  const pixels = ctx.getImageData(0, 0, width, height).data
+  const visited = new Uint8Array(width * height)
+  const queue = new Int32Array(width * height)
+  let head = 0, tail = 0
+  const enqueue = index => { if (!visited[index]) { visited[index] = 1; queue[tail++] = index } }
+  // Never seed the bottom edge: hair, neck, or clothing often touches it.
+  for (let x = 0; x < width; x++) enqueue(x)
+  for (let y = 1; y < Math.floor(height * .86); y++) { enqueue(y * width); enqueue(y * width + width - 1) }
+  const threshold = 26 * 26
+  while (head < tail) {
+    const index = queue[head++]
+    const x = index % width, y = Math.floor(index / width), p = index * 4
+    const visit = next => {
+      if (next < 0 || next >= width * height || visited[next]) return
+      const np = next * 4
+      const dr = pixels[p] - pixels[np], dg = pixels[p + 1] - pixels[np + 1], db = pixels[p + 2] - pixels[np + 2]
+      if (dr * dr + dg * dg + db * db <= threshold) enqueue(next)
+    }
+    if (x > 0) visit(index - 1)
+    if (x + 1 < width) visit(index + 1)
+    if (y > 0) visit(index - width)
+    if (y + 1 < height) visit(index + width)
+  }
+  const removedRatio = tail / (width * height)
+  if (removedRatio < .12 || removedRatio > .78) return null
+  const mask = document.createElement('canvas')
+  mask.width = width; mask.height = height
+  const maskCtx = mask.getContext('2d')
+  const maskPixels = maskCtx.createImageData(width, height)
+  for (let i = 0; i < visited.length; i++) {
+    const p = i * 4
+    maskPixels.data[p] = 255; maskPixels.data[p + 1] = 255; maskPixels.data[p + 2] = 255
+    maskPixels.data[p + 3] = visited[i] ? 0 : 255
+  }
+  maskCtx.putImageData(maskPixels, 0, 0)
+  return mask
+}
+
+function trimBelowChin(mask, face, cropOrigin, scale) {
+  const ctx = mask.getContext('2d', { willReadFrequently: true })
+  const imageData = ctx.getImageData(0, 0, mask.width, mask.height)
+  const faceX = (face.x - cropOrigin.x) * scale
+  const faceY = (face.y - cropOrigin.y) * scale
+  const faceW = face.w * scale
+  const faceH = face.h * scale
+  const centerX = faceX + faceW / 2
+  const chinY = faceY + faceH
+  for (let y = Math.max(0, Math.floor(chinY)); y < mask.height; y++) {
+    for (let x = 0; x < mask.width; x++) {
+      const distanceX = Math.abs(x - centerX)
+      const neck = distanceX < faceW * .17
+      const hair = distanceX > faceW * .43
+      const allowance = neck ? faceH * .15 : hair ? faceH * .23 : faceH * .025
+      const fade = Math.max(0, Math.min(1, (chinY + allowance - y) / Math.max(2, faceH * .035)))
+      imageData.data[(y * mask.width + x) * 4 + 3] *= fade
+    }
+  }
+  ctx.putImageData(imageData, 0, 0)
 }
 
 function templateUrl(template) {
@@ -122,25 +197,35 @@ async function createHeadCutout(original, face, precise = false) {
   canvas.width = width; canvas.height = height
   const ctx = canvas.getContext('2d', { willReadFrequently: true })
   ctx.drawImage(original, sx, sy, sw, sh, 0, 0, width, height)
-  const headSegmenter = await getHeadSegmenter()
-  const semanticResult = headSegmenter.segment(canvas)
-  const categoryMask = semanticResult.categoryMask
-  if (!categoryMask) throw new Error('The semantic head mask is unavailable.')
-  const categories = categoryMask.getAsUint8Array()
-  const semanticMask = document.createElement('canvas')
-  semanticMask.width = categoryMask.width; semanticMask.height = categoryMask.height
-  const semanticCtx = semanticMask.getContext('2d')
-  const semanticPixels = semanticCtx.createImageData(semanticMask.width, semanticMask.height)
-  for (let i = 0; i < categories.length; i++) {
-    // Only head semantics survive: hair (1), face skin (3), accessories (5).
-    // Body skin (2) removes hands/arms; clothes (4) and background (0) are rejected.
-    const keep = categories[i] === 1 || categories[i] === 3 || categories[i] === 5
-    const p = i * 4
-    semanticPixels.data[p] = 255; semanticPixels.data[p + 1] = 255; semanticPixels.data[p + 2] = 255
-    semanticPixels.data[p + 3] = keep ? 255 : 0
+  let semanticMask = !precise && createSimpleBackgroundMask(canvas)
+  if (!semanticMask) {
+    const segmenter = precise ? await getHeadSegmenter() : await getFastSegmenter()
+    const semanticResult = segmenter.segment(canvas)
+    const categoryMask = semanticResult.categoryMask
+    if (!categoryMask) throw new Error('The semantic head mask is unavailable.')
+    const categories = categoryMask.getAsUint8Array()
+    semanticMask = document.createElement('canvas')
+    semanticMask.width = categoryMask.width; semanticMask.height = categoryMask.height
+    const semanticCtx = semanticMask.getContext('2d')
+    const semanticPixels = semanticCtx.createImageData(semanticMask.width, semanticMask.height)
+    for (let i = 0; i < categories.length; i++) {
+      const keep = precise
+        ? categories[i] === 1 || categories[i] === 3 || categories[i] === 5
+        : categories[i] === 0
+      const p = i * 4
+      semanticPixels.data[p] = 255; semanticPixels.data[p + 1] = 255; semanticPixels.data[p + 2] = 255
+      semanticPixels.data[p + 3] = keep ? 255 : 0
+    }
+    semanticCtx.putImageData(semanticPixels, 0, 0)
+    categoryMask.close()
   }
-  semanticCtx.putImageData(semanticPixels, 0, 0)
-  categoryMask.close()
+  if (semanticMask.width !== width || semanticMask.height !== height) {
+    const normalizedMask = document.createElement('canvas')
+    normalizedMask.width = width; normalizedMask.height = height
+    normalizedMask.getContext('2d').drawImage(semanticMask, 0, 0, width, height)
+    semanticMask = normalizedMask
+  }
+  if (!precise) trimBelowChin(semanticMask, face, { x: sx, y: sy }, scale)
 
   const outputCanvas = document.createElement('canvas')
   outputCanvas.width = width
@@ -189,6 +274,15 @@ function createDetectionCanvas(image) {
   return { source: canvas, scale }
 }
 
+function hasSimplePortraitBackground(image) {
+  const scale = Math.min(1, 256 / Math.max(image.naturalWidth, image.naturalHeight))
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale))
+  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale))
+  canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height)
+  return Boolean(createSimpleBackgroundMask(canvas))
+}
+
 function getPlacement(student, template) {
   const { crop, face } = student
   // Align the detected chin just above the collar. The remaining neck naturally
@@ -228,19 +322,32 @@ function createErasedCutout(student) {
   return canvas
 }
 
-async function prepareStudent(file, index, precise = false) {
+async function prepareStudent(file, index, precise = false, onStage = () => {}) {
   const startedAt = performance.now()
+  onStage(precise ? '加载精细模型' : '加载轻量模型')
   const originalUrl = URL.createObjectURL(file)
   const original = await loadImage(originalUrl)
   let face = null
   try {
-    const detector = await getFaceDetector()
-    const detection = createDetectionCanvas(original)
-    const result = detector.detect(detection.source)
-    const box = result.detections?.[0]?.boundingBox || null
-    face = box && {
-      originX: box.originX / detection.scale, originY: box.originY / detection.scale,
-      width: box.width / detection.scale, height: box.height / detection.scale
+    if (!precise && hasSimplePortraitBackground(original)) {
+      onStage('正在极速定位证件照')
+    } else {
+      onStage('正在检测人脸')
+      const detection = createDetectionCanvas(original)
+      let box = null
+      if ('FaceDetector' in globalThis) {
+        const nativeDetector = new globalThis.FaceDetector({ fastMode: true, maxDetectedFaces: 1 })
+        const nativeResult = await nativeDetector.detect(detection.source)
+        box = nativeResult[0]?.boundingBox || null
+      } else {
+        const detector = await getFaceDetector()
+        const result = detector.detect(detection.source)
+        box = result.detections?.[0]?.boundingBox || null
+      }
+      face = box && {
+        originX: (box.originX ?? box.x) / detection.scale, originY: (box.originY ?? box.y) / detection.scale,
+        width: box.width / detection.scale, height: box.height / detection.scale
+      }
     }
   } catch (error) {
     console.warn('Face detection unavailable, using center crop.', error)
@@ -255,6 +362,7 @@ async function prepareStudent(file, index, precise = false) {
   let processedCrop
   let processedFace
   try {
+    onStage(precise ? '正在精细分离头部' : '正在快速分离头部')
     const result = await createHeadCutout(original, { x: fx, y: fy, w: fw, h: fh }, precise)
     cutoutUrl = URL.createObjectURL(result.blob)
     processedCrop = result.crop
@@ -364,7 +472,8 @@ function App() {
     loadSavedTemplates().then(setCustomTemplates).catch(error => console.warn('Unable to load saved templates.', error))
   }, [])
   useEffect(() => {
-    const warmUp = () => Promise.allSettled([getFaceDetector(), getHeadSegmenter()])
+    const mobileOrLowPower = matchMedia('(pointer: coarse)').matches || (navigator.hardwareConcurrency || 4) <= 4
+    const warmUp = () => mobileOrLowPower || 'FaceDetector' in globalThis ? Promise.resolve() : getFaceDetector().catch(() => {})
     const idleId = 'requestIdleCallback' in window
       ? window.requestIdleCallback(warmUp, { timeout: 1500 })
       : window.setTimeout(warmUp, 300)
@@ -379,7 +488,7 @@ function App() {
     const failed = []
     let finished = 0
     await runWithConcurrency(files, 2, async (file, i) => {
-      try { added[i] = await prepareStudent(file, students.length + i) } catch (error) { failed.push(file.name); console.error(error) }
+      try { added[i] = await prepareStudent(file, students.length + i, false, label => setProcessing(p => ({ ...p, label }))) } catch (error) { failed.push(file.name); console.error(error) }
       finished += 1
       setProcessing(p => ({ ...p, done: finished }))
     })
@@ -395,7 +504,7 @@ function App() {
     setRefiningId(selected.id)
     setProcessing({ active: true, done: 0, total: 1, label: '正在精细抠图' })
     try {
-      const refined = await prepareStudent(selected.file, 0, true)
+      const refined = await prepareStudent(selected.file, 0, true, label => setProcessing(p => ({ ...p, label })))
       URL.revokeObjectURL(refined.originalUrl)
       URL.revokeObjectURL(selected.cutoutUrl)
       setStudents(list => list.map(student => student.id === selected.id ? {
