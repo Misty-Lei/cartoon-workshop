@@ -153,9 +153,10 @@ function createSimpleBackgroundMask(canvas) {
   return mask
 }
 
-function trimBelowChin(mask, face, cropOrigin, scale) {
+function trimBelowChin(mask, sourceCanvas, face, cropOrigin, scale) {
   const ctx = mask.getContext('2d', { willReadFrequently: true })
   const imageData = ctx.getImageData(0, 0, mask.width, mask.height)
+  const sourceData = sourceCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, sourceCanvas.width, sourceCanvas.height).data
   const faceX = (face.x - cropOrigin.x) * scale
   const faceY = (face.y - cropOrigin.y) * scale
   const faceW = face.w * scale
@@ -166,12 +167,44 @@ function trimBelowChin(mask, face, cropOrigin, scale) {
     for (let x = 0; x < mask.width; x++) {
       const distanceX = Math.abs(x - centerX)
       const neck = distanceX < faceW * .17
-      const hair = distanceX > faceW * .43
+      const p = (y * mask.width + x) * 4
+      const luminance = sourceData[p] * .2126 + sourceData[p + 1] * .7152 + sourceData[p + 2] * .0722
+      // Long hair and braids may continue below the chin. Preserve only dark
+      // source pixels in the outer zones so white collars/shoulders disappear.
+      const hair = distanceX > faceW * .40 && luminance < 118
       const allowance = neck ? faceH * .15 : hair ? faceH * .23 : faceH * .025
       const fade = Math.max(0, Math.min(1, (chinY + allowance - y) / Math.max(2, faceH * .035)))
-      imageData.data[(y * mask.width + x) * 4 + 3] *= fade
+      imageData.data[p + 3] *= fade
     }
   }
+  ctx.putImageData(imageData, 0, 0)
+}
+
+function keepHeadComponent(mask, face, cropOrigin, scale) {
+  const ctx = mask.getContext('2d', { willReadFrequently: true })
+  const imageData = ctx.getImageData(0, 0, mask.width, mask.height)
+  const alpha = imageData.data
+  const visited = new Uint8Array(mask.width * mask.height)
+  const queue = new Int32Array(mask.width * mask.height)
+  let head = 0, tail = 0
+  const seedX = Math.max(0, Math.min(mask.width - 1, Math.round((face.x - cropOrigin.x + face.w / 2) * scale)))
+  const seedY = Math.max(0, Math.min(mask.height - 1, Math.round((face.y - cropOrigin.y + face.h / 2) * scale)))
+  const seed = seedY * mask.width + seedX
+  if (alpha[seed * 4 + 3] < 64) return
+  visited[seed] = 1; queue[tail++] = seed
+  while (head < tail) {
+    const index = queue[head++]
+    const x = index % mask.width, y = Math.floor(index / mask.width)
+    const visit = next => {
+      if (next < 0 || next >= visited.length || visited[next] || alpha[next * 4 + 3] < 64) return
+      visited[next] = 1; queue[tail++] = next
+    }
+    if (x > 0) visit(index - 1)
+    if (x + 1 < mask.width) visit(index + 1)
+    if (y > 0) visit(index - mask.width)
+    if (y + 1 < mask.height) visit(index + mask.width)
+  }
+  for (let i = 0; i < visited.length; i++) if (!visited[i]) alpha[i * 4 + 3] = 0
   ctx.putImageData(imageData, 0, 0)
 }
 
@@ -197,8 +230,8 @@ async function createHeadCutout(original, face, precise = false) {
   canvas.width = width; canvas.height = height
   const ctx = canvas.getContext('2d', { willReadFrequently: true })
   ctx.drawImage(original, sx, sy, sw, sh, 0, 0, width, height)
-  let semanticMask = !precise && createSimpleBackgroundMask(canvas)
-  if (!semanticMask) {
+  let semanticMask
+  {
     const segmenter = precise ? await getHeadSegmenter() : await getFastSegmenter()
     const semanticResult = segmenter.segment(canvas)
     const categoryMask = semanticResult.categoryMask
@@ -225,7 +258,10 @@ async function createHeadCutout(original, face, precise = false) {
     normalizedMask.getContext('2d').drawImage(semanticMask, 0, 0, width, height)
     semanticMask = normalizedMask
   }
-  if (!precise) trimBelowChin(semanticMask, face, { x: sx, y: sy }, scale)
+  if (!precise) {
+    keepHeadComponent(semanticMask, face, { x: sx, y: sy }, scale)
+    trimBelowChin(semanticMask, canvas, face, { x: sx, y: sy }, scale)
+  }
 
   const outputCanvas = document.createElement('canvas')
   outputCanvas.width = width
@@ -329,25 +365,21 @@ async function prepareStudent(file, index, precise = false, onStage = () => {}) 
   const original = await loadImage(originalUrl)
   let face = null
   try {
-    if (!precise && hasSimplePortraitBackground(original)) {
-      onStage('正在极速定位证件照')
+    onStage('正在检测人脸')
+    const detection = createDetectionCanvas(original)
+    let box = null
+    if ('FaceDetector' in globalThis) {
+      const nativeDetector = new globalThis.FaceDetector({ fastMode: true, maxDetectedFaces: 1 })
+      const nativeResult = await nativeDetector.detect(detection.source)
+      box = nativeResult[0]?.boundingBox || null
     } else {
-      onStage('正在检测人脸')
-      const detection = createDetectionCanvas(original)
-      let box = null
-      if ('FaceDetector' in globalThis) {
-        const nativeDetector = new globalThis.FaceDetector({ fastMode: true, maxDetectedFaces: 1 })
-        const nativeResult = await nativeDetector.detect(detection.source)
-        box = nativeResult[0]?.boundingBox || null
-      } else {
-        const detector = await getFaceDetector()
-        const result = detector.detect(detection.source)
-        box = result.detections?.[0]?.boundingBox || null
-      }
-      face = box && {
-        originX: (box.originX ?? box.x) / detection.scale, originY: (box.originY ?? box.y) / detection.scale,
-        width: box.width / detection.scale, height: box.height / detection.scale
-      }
+      const detector = await getFaceDetector()
+      const result = detector.detect(detection.source)
+      box = result.detections?.[0]?.boundingBox || null
+    }
+    face = box && {
+      originX: (box.originX ?? box.x) / detection.scale, originY: (box.originY ?? box.y) / detection.scale,
+      width: box.width / detection.scale, height: box.height / detection.scale
     }
   } catch (error) {
     console.warn('Face detection unavailable, using center crop.', error)
@@ -638,7 +670,7 @@ function App() {
             <button title="撤销上一步" disabled={!selected.erasures?.length} onClick={() => updateSelected({erasures: selected.erasures.slice(0, -1)})}><Undo2 size={15}/>撤销</button>
             <button title="还原全部消除" disabled={!selected.erasures?.length} onClick={() => updateSelected({erasures: []})}><RotateCcw size={15}/>还原</button>
           </div>}
-          <div className="process-summary"><span className={selected.cutoutMode === 'precise' ? 'precise' : ''}>{selected.cutoutMode === 'precise' ? '精细模式' : '快速模式'}</span><b>{selected.durationMs ? `${(selected.durationMs / 1000).toFixed(1)} 秒` : ''}</b></div>
+          <div className="process-summary"><span className={selected.cutoutMode === 'precise' ? 'precise' : ''}>{selected.cutoutMode === 'precise' ? '精细模式' : '平衡模式'}</span><b>{selected.durationMs ? `${(selected.durationMs / 1000).toFixed(1)} 秒` : ''}</b></div>
           <div className="student-editor">
             <label><span>文件名</span><input value={selected.name} onChange={e => updateSelected({name: e.target.value})}/></label>
             <label><span>头像大小</span><input type="range" min="0.75" max="1.35" step="0.01" value={selected.scale} onChange={e => updateSelected({scale: +e.target.value})}/><output>{Math.round(selected.scale * 100)}%</output></label>
@@ -677,7 +709,7 @@ function App() {
       </aside>
     </main>
 
-    {processing.active && <div className="modal-backdrop"><div className="progress-modal"><button className="modal-x" aria-label="关闭" disabled><X size={16}/></button><div className="spinner"><Sparkles size={22}/></div><h3>{processing.label}</h3><p>{processing.done} / {processing.total}</p><div className="progress-track"><i style={{width: `${processing.total ? processing.done / processing.total * 100 : 5}%`}}/></div><span>{processing.label.includes('精细') ? '复杂照片会使用高质量模型，请稍候' : '快速模式通常可在 20 秒内完成'}</span></div></div>}
+    {processing.active && <div className="modal-backdrop"><div className="progress-modal"><button className="modal-x" aria-label="关闭" disabled><X size={16}/></button><div className="spinner"><Sparkles size={22}/></div><h3>{processing.label}</h3><p>{processing.done} / {processing.total}</p><div className="progress-track"><i style={{width: `${processing.total ? processing.done / processing.total * 100 : 5}%`}}/></div><span>{processing.label.includes('精细') ? '复杂照片会使用高质量模型，请稍候' : '平衡模式优先保证准确，通常约 10 秒内完成'}</span></div></div>}
     {errorMessage && <div className="error-toast" role="alert"><AlertTriangle size={18}/><span>{errorMessage}</span><button aria-label="关闭提示" onClick={() => setErrorMessage('')}><X size={16}/></button></div>}
   </div>
 }
