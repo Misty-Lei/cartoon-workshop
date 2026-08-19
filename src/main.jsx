@@ -162,17 +162,23 @@ function trimBelowChin(mask, sourceCanvas, face, cropOrigin, scale) {
   const faceW = face.w * scale
   const faceH = face.h * scale
   const centerX = faceX + faceW / 2
-  const chinY = faceY + faceH
+  // Face detectors often include a strip below the anatomical chin. Start the
+  // hard clothing rejection slightly earlier so collars cannot survive.
+  const chinY = faceY + faceH * .91
   for (let y = Math.max(0, Math.floor(chinY)); y < mask.height; y++) {
     for (let x = 0; x < mask.width; x++) {
       const distanceX = Math.abs(x - centerX)
-      const neck = distanceX < faceW * .17
+      const neck = distanceX < faceW * .13
       const p = (y * mask.width + x) * 4
       const luminance = sourceData[p] * .2126 + sourceData[p + 1] * .7152 + sourceData[p + 2] * .0722
+      const aboveY = Math.max(0, y - Math.max(2, Math.round(faceH * .04)))
+      const aboveP = (aboveY * mask.width + x) * 4
+      const aboveLuminance = sourceData[aboveP] * .2126 + sourceData[aboveP + 1] * .7152 + sourceData[aboveP + 2] * .0722
       // Long hair and braids may continue below the chin. Preserve only dark
-      // source pixels in the outer zones so white collars/shoulders disappear.
-      const hair = distanceX > faceW * .40 && luminance < 118
-      const allowance = neck ? faceH * .15 : hair ? faceH * .23 : faceH * .025
+      // pixels connected to dark pixels above; dark jackets cannot start a new
+      // component below the chin and be mistaken for hair.
+      const hair = distanceX > faceW * .38 && distanceX < faceW * .78 && luminance < 108 && aboveLuminance < 128
+      const allowance = neck ? faceH * .11 : hair ? faceH * .30 : 0
       const fade = Math.max(0, Math.min(1, (chinY + allowance - y) / Math.max(2, faceH * .035)))
       imageData.data[p + 3] *= fade
     }
@@ -258,10 +264,8 @@ async function createHeadCutout(original, face, precise = false) {
     normalizedMask.getContext('2d').drawImage(semanticMask, 0, 0, width, height)
     semanticMask = normalizedMask
   }
-  if (!precise) {
-    keepHeadComponent(semanticMask, face, { x: sx, y: sy }, scale)
-    trimBelowChin(semanticMask, canvas, face, { x: sx, y: sy }, scale)
-  }
+  keepHeadComponent(semanticMask, face, { x: sx, y: sy }, scale)
+  trimBelowChin(semanticMask, canvas, face, { x: sx, y: sy }, scale)
 
   const outputCanvas = document.createElement('canvas')
   outputCanvas.width = width
